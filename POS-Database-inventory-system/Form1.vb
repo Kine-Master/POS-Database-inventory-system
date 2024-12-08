@@ -136,7 +136,8 @@ Public Class Form1
         End If
     End Sub
 
-    ' Add to Cart
+
+
     Private Sub btnAddToCart_Click(sender As Object, e As EventArgs) Handles btnAddToCart.Click
         ' Ensure item is selected in the ComboBox
         If cmbItems.SelectedItem Is Nothing OrElse String.IsNullOrWhiteSpace(txtQuantity.Text) Then
@@ -145,8 +146,24 @@ Public Class Form1
         End If
 
         Dim selectedItem As String = cmbItems.SelectedItem.ToString()
-        Dim itemPrice As Double = GetItemPriceFromInventory(selectedItem)
         Dim quantity As Integer = Convert.ToInt32(txtQuantity.Text)
+
+        ' Get the available inventory quantity for the selected item
+        Dim inventoryQuantity As Integer = GetInventoryQuantity(selectedItem)
+
+        ' Check if the inventory has enough stock or if it's out of stock
+        If inventoryQuantity <= 0 Then
+            MessageBox.Show($"{selectedItem} is out of stock! Please restock before adding to the cart.")
+            Return
+        End If
+
+        ' Check if the user is trying to add more than available quantity
+        If quantity > inventoryQuantity Then
+            MessageBox.Show($"You can only add up to {inventoryQuantity} units of {selectedItem}.")
+            Return
+        End If
+
+        Dim itemPrice As Double = GetItemPriceFromInventory(selectedItem)
         Dim totalAmount As Double = itemPrice * quantity
 
         ' Add item to the DataGridView (Cart)
@@ -157,6 +174,25 @@ Public Class Form1
         txtQuantity.Clear()
         txtTotalAmount.Clear()
     End Sub
+
+    ' This function gets the available quantity of the selected item in the inventory
+    Private Function GetInventoryQuantity(itemName As String) As Integer
+        Dim quantity As Integer = 0
+        Try
+            Using conn As New SQLiteConnection(connString)
+                conn.Open()
+                Dim query As String = "SELECT Quantity FROM Inventory WHERE ItemName = @ItemName"
+                Using cmd As New SQLiteCommand(query, conn)
+                    cmd.Parameters.AddWithValue("@ItemName", itemName)
+                    quantity = Convert.ToInt32(cmd.ExecuteScalar())
+                End Using
+            End Using
+        Catch ex As Exception
+            MessageBox.Show("Error checking inventory quantity: " & ex.Message)
+        End Try
+        Return quantity
+    End Function
+
 
     ' Delete from Cart
     Private Sub btnDeleteToCart_Click(sender As Object, e As EventArgs) Handles btnDeleteToCart.Click
@@ -216,6 +252,16 @@ Public Class Form1
                             cmd.Parameters.AddWithValue("@TotalAmount", totalAmount)
                             cmd.Parameters.AddWithValue("@OrderDate", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"))
                             cmd.ExecuteNonQuery()
+                        End Using
+                    End Using
+                    Using conn As New SQLiteConnection(connString)
+                        conn.Open()
+                        Dim updateQuery As String = "UPDATE Inventory SET Quantity = Quantity - @Quantity WHERE ItemName = @ItemName"
+                        Using cmd As New SQLiteCommand(updateQuery, conn)
+                            cmd.Parameters.AddWithValue("@Quantity", quantity)
+                            cmd.Parameters.AddWithValue("@ItemName", itemName)
+                            cmd.ExecuteNonQuery()
+
                         End Using
                     End Using
                 End If
